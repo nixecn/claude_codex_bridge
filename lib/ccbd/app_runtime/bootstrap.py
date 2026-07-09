@@ -42,6 +42,15 @@ APP_REQUEST_TIMEOUT_S = 0.0
 JOB_HEARTBEAT_SILENCE_START_AFTER_S = 600.0
 JOB_HEARTBEAT_REPEAT_INTERVAL_S = 600.0
 
+# Expire a delivery lease that has stayed ACQUIRED past this many seconds with no
+# owning running job. The lease-expiry sweep only reaps leases whose agent has no
+# live RUNNING job, so a lease still owned by a job (e.g. a long 'ask' handled by
+# the job heartbeat reaper) is never touched here. This is the message-type
+# agnostic backstop for non-'ask' stuck DELIVERING events (task_reply, etc.) that
+# have no tracked job. Left None the sweep is disabled and such leases starve
+# their mailbox queue until a full daemon restart.
+MAILBOX_LEASE_EXPIRY_TTL_S = 1800.0
+
 
 def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> None:
     app.project_root = Path(project_root).expanduser().resolve()
@@ -125,6 +134,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
         store=app.heartbeat_state_store,
         clock=app.clock,
     )
+    app.mailbox_lease_ttl_s = MAILBOX_LEASE_EXPIRY_TTL_S
     app.socket_server = CcbdSocketServer(app.paths.ccbd_socket_path)
     app.socket_server._record_request_queue_wait = lambda value: setattr(
         app.control_plane_metrics,
