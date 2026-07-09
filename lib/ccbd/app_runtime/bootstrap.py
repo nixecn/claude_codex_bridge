@@ -41,6 +41,12 @@ from .service_graph import CcbdServiceGraphDependencies, build_ccbd_service_grap
 APP_REQUEST_TIMEOUT_S = 0.0
 JOB_HEARTBEAT_SILENCE_START_AFTER_S = 600.0
 JOB_HEARTBEAT_REPEAT_INTERVAL_S = 600.0
+# Reap a running 'ask' job after this many consecutive no-progress heartbeat
+# intervals (~ count * repeat_interval_s of total silence). Any detected
+# session-log progress resets the counter, so only genuinely wedged jobs are
+# terminated (as INCOMPLETE, no re-run). Left None the stall never self-heals
+# and starves everything queued behind it until a full daemon restart.
+JOB_HEARTBEAT_TERMINAL_NOTICE_COUNT = 6
 
 
 def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> None:
@@ -124,6 +130,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
         ),
         store=app.heartbeat_state_store,
         clock=app.clock,
+        terminal_notice_count=JOB_HEARTBEAT_TERMINAL_NOTICE_COUNT,
     )
     app.socket_server = CcbdSocketServer(app.paths.ccbd_socket_path)
     app.socket_server._record_request_queue_wait = lambda value: setattr(
